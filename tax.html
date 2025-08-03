@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>연말정산 계산기 (최종 확인)</title>
+<style>
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+  .tax-calculator-container { background-color: #ffffff; margin: 20px auto; padding: 30px; max-width: 600px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); border: 1px solid #e0e0e0; }
+  .tax-calculator-container h1 { text-align: center; color: #2c3e50; margin-bottom: 30px; }
+  .tax-calculator-container .input-group { margin-bottom: 20px; }
+  .tax-calculator-container label { display: block; margin-bottom: 8px; color: #34495e; font-weight: 600; }
+  .tax-calculator-container input[type="number"] { width: 100%; padding: 12px; box-sizing: border-box; border: 1px solid #bdc3c7; border-radius: 5px; font-size: 16px; }
+  .tax-calculator-container .button-group { display: flex; gap: 10px; margin-top: 25px; }
+  .tax-calculator-container button { flex-grow: 1; padding: 12px 20px; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; transition: background-color 0.3s ease; }
+  .tax-calculator-container #calc-button { background-color: #3498db; color: white; }
+  .tax-calculator-container #reset-button { background-color: #e74c3c; color: white; }
+  .tax-calculator-container #result { margin-top: 25px; padding: 20px; background-color: #ecf0f1; border-radius: 5px; line-height: 1.8; font-size: 16px; display: none; border-left: 5px solid #3498db; }
+  .result-p { margin: 0; }
+  .advice-p { margin: 10px 0 0 0; padding-left: 1.2em; text-indent: -1.2em; }
+</style>
+</head>
+<body>
+
+<div class="tax-calculator-container">
+  <h1>연말정산 절세 도우미</h1>
+  <div class="input-group">
+    <label for="annual-income">연봉 (만원)</label>
+    <input type="number" id="annual-income" placeholder="예: 7000" />
+  </div>
+  <div class="input-group">
+    <label for="credit-card">신용카드 사용액 (만원)</label>
+    <input type="number" id="credit-card" placeholder="예: 1500" />
+  </div>
+  <div class="input-group">
+    <label for="cash-usage">현금/체크카드 사용액 (만원)</label>
+    <input type="number" id="cash-usage" placeholder="예: 800" />
+  </div>
+  <div class="input-group">
+    <label for="market-usage">전통시장/대중교통 (만원)</label>
+    <input type="number" id="market-usage" placeholder="예: 100" />
+  </div>
+  <div class="button-group">
+    <button id="calc-button">공제 금액 계산</button>
+    <button id="reset-button">초기화</button>
+  </div>
+  <div id="result"></div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (document.querySelector('.tax-calculator-container')) {
+    document.getElementById('calc-button').addEventListener('click', calculateDeduction);
+    document.getElementById('reset-button').addEventListener('click', resetFields);
+  }
+
+  function getInputValue(id) {
+    const value = document.getElementById(id).value;
+    return value ? parseFloat(value) * 10000 : 0;
+  }
+
+  function formatKRW(num) {
+      return new Intl.NumberFormat('ko-KR').format(Math.floor(num));
+  }
+
+  function calculateDeduction() {
+    const annualIncome = getInputValue('annual-income');
+    if (annualIncome === 0) {
+        alert("연봉을 입력해주세요.");
+        return;
+    }
+    const creditCardUsage = getInputValue('credit-card');
+    const cashUsage = getInputValue('cash-usage');
+    const traditionalMarketUsage = getInputValue('market-usage');
+
+    const totalUsage = creditCardUsage + cashUsage + traditionalMarketUsage;
+    const minimumUsage = Math.floor(annualIncome * 0.25);
+    const resultDiv = document.getElementById('result');
+    resultDiv.innerHTML = ''; // Clear previous results
+
+    if (totalUsage <= minimumUsage) {
+        const neededAmount = minimumUsage - totalUsage;
+        resultDiv.textContent = `소득공제를 받기 위한 최소 사용금액(${formatKRW(minimumUsage)}원)을 채우지 못했습니다. ${formatKRW(neededAmount)}원 더 사용해야 공제 대상이 됩니다.`;
+        resultDiv.style.display = 'block';
+        return;
+    }
+
+    const baseDeductionLimit = (annualIncome <= 70000000) ? 3000000 : 2500000;
+    const additionalDeductionLimit = 1000000; // APK 로직과 동일하게 연봉 조건 제거
+
+    let usageOverThreshold = totalUsage - minimumUsage;
+    
+    const marketUsageApplied = Math.min(usageOverThreshold, traditionalMarketUsage);
+    const marketDeduction = marketUsageApplied * 0.40;
+    usageOverThreshold -= marketUsageApplied;
+
+    const cashUsageApplied = Math.min(usageOverThreshold, cashUsage);
+    const cashDeduction = cashUsageApplied * 0.30;
+    usageOverThreshold -= cashUsageApplied;
+
+    const creditUsageApplied = Math.min(usageOverThreshold, creditCardUsage);
+    const creditDeduction = creditUsageApplied * 0.15;
+
+    // --- 최종 공제액 계산 (APK 소스코드 기준) ---
+    const actualAdditionalDeduction = Math.min(marketDeduction, additionalDeductionLimit);
+    const marketDeductionRemainder = marketDeduction - actualAdditionalDeduction;
+    const baseDeductionSources = creditDeduction + cashDeduction + marketDeductionRemainder;
+    const actualBaseDeduction = Math.min(baseDeductionSources, baseDeductionLimit);
+    const finalDeduction = actualBaseDeduction + actualAdditionalDeduction;
+
+    // --- 결과 표시 로직 (가장 단순한 방식으로 재작성) ---
+    const p1 = document.createElement('p');
+    p1.className = 'result-p';
+    p1.innerHTML = `<strong>총 공제 예상 금액: ${formatKRW(finalDeduction)}원</strong>`;
+    resultDiv.appendChild(p1);
+
+    const p2 = document.createElement('p');
+    p2.className = 'result-p';
+    p2.style.fontSize = '14px';
+    p2.innerHTML = `(기본 공제 ${formatKRW(actualBaseDeduction)}원 + 추가 공제 ${formatKRW(actualAdditionalDeduction)}원)`;
+    resultDiv.appendChild(p2);
+
+    resultDiv.appendChild(document.createElement('hr'));
+
+    const p3 = document.createElement('p');
+    p3.className = 'result-p';
+    p3.innerHTML = '<strong>💡 절세 조언</strong>';
+    resultDiv.appendChild(p3);
+
+    const remainingBase = baseDeductionLimit - actualBaseDeduction;
+    const p4 = document.createElement('p');
+    p4.className = 'advice-p';
+    if (remainingBase > 1) {
+        p4.innerHTML = `▶ 기본 공제 한도(${formatKRW(baseDeductionLimit)}원)까지 ${formatKRW(remainingBase)}원 남았습니다.`;
+    } else {
+        p4.innerHTML = `▶ 기본 공제 한도를 모두 채웠습니다!`;
+    }
+    resultDiv.appendChild(p4);
+
+    // APK는 연봉과 관계없이 이 조언을 표시함
+    const remainingAdditional = additionalDeductionLimit - actualAdditionalDeduction;
+    const p5 = document.createElement('p');
+    p5.className = 'advice-p';
+    if (remainingAdditional > 1) {
+        p5.innerHTML = `▶ 추가 공제(전통시장/대중교통) 한도(${formatKRW(additionalDeductionLimit)}원)까지 ${formatKRW(remainingAdditional)}원 남았습니다.`;
+    } else {
+        p5.innerHTML = `▶ 추가 공제(전통시장/대중교통)도 모두 채웠습니다. 훌륭합니다!`;
+    }
+    resultDiv.appendChild(p5);
+    
+    resultDiv.style.display = 'block';
+  }
+
+  function resetFields() {
+    document.getElementById('annual-income').value = '';
+    document.getElementById('credit-card').value = '';
+    document.getElementById('cash-usage').value = '';
+    document.getElementById('market-usage').value = '';
+    const resultDiv = document.getElementById('result');
+    resultDiv.innerHTML = '';
+    resultDiv.style.display = 'none';
+  }
+});
+</script>
+
+</body>
+</html>
